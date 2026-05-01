@@ -1,0 +1,8 @@
+{
+  "depth": "standard",
+  "mode": "interactive",
+  "gates": {
+    "confirm_phases": false,
+    "confirm_plans": false
+  }
+}
