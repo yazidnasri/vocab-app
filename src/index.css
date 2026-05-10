@@ -8,7 +8,12 @@ body {
   overscroll-behavior: none;
 }
 
-#root { min-height: 100vh; }
+#root { min-height: 100vh; min-height: 100dvh; }
+
+/* ── Safe-area screen clearance (notch + home indicator) ── */
+.screen {
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
+}
 
 input::placeholder, textarea::placeholder { color: #5a5a5e; }
 

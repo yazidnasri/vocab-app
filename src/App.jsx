@@ -168,7 +168,7 @@ function SkeletonCard() {
 // ─── Toast system ─────────────────────────────────────────────────────────────
 function ToastContainer({ toasts }) {
   return (
-    <div style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", width: "calc(100% - 40px)", maxWidth: 350, zIndex: 9999, display: "flex", flexDirection: "column", gap: 8, pointerEvents: "none" }}>
+    <div style={{ position: "fixed", top: "calc(env(safe-area-inset-top, 0px) + 16px)", left: "50%", transform: "translateX(-50%)", width: "calc(100% - 40px)", maxWidth: 350, zIndex: 9999, display: "flex", flexDirection: "column", gap: 8, pointerEvents: "none" }}>
       {toasts.map(t => (
         <div key={t.id} className="toast" style={{
           background: t.type === "error" ? T.redBg : t.type === "warning" ? T.orangeBg : T.greenBg,
@@ -2414,7 +2414,7 @@ export default function VocabApp() {
   if (!user) return <AuthScreen mode={authMode} onToggleMode={() => setAuthMode(m => m === "login" ? "signup" : "login")} />;
 
   return (
-    <div style={{ maxWidth: 390, margin: "0 auto", background: T.bg, minHeight: "100vh", position: "relative", fontFamily: FONT }}>
+    <div style={{ maxWidth: 390, margin: "0 auto", background: T.bg, minHeight: "100dvh", position: "relative", fontFamily: FONT, paddingTop: "env(safe-area-inset-top, 0px)" }}>
 
       {/* Onboarding overlay */}
       {showOnboarding && (
@@ -2457,7 +2457,7 @@ export default function VocabApp() {
       )}
 
       {/* Bottom nav */}
-      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 390, background: T.card, borderTop: `1px solid ${T.cardBorder}`, display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", padding: "6px 0 18px" }}>
+      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 390, background: T.card, borderTop: `1px solid ${T.cardBorder}`, display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", paddingTop: 6, paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 6px)" }}>
         {[
           { id: "home",    icon: "home",  label: "Home" },
           { id: "library", icon: "book",  label: "Library" },
