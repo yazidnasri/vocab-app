@@ -89,57 +89,92 @@ function getDueWords(words) {
 
 // ─── DB Mappers ───────────────────────────────────────────────────────────────
 const mapDbToWord = (row) => ({
-  id:            row.id,
-  word:          row.word ?? "",
-  phonetic:      row.phonetic ?? "",
-  ipa:           row.ipa ?? "",
-  partOfSpeech:  row.part_of_speech ?? "",
-  definition:    row.definition ?? "",
-  forms:         row.forms ?? [],
-  examples:      row.examples ?? [],
-  synonyms:      row.synonyms ?? [],
-  antonyms:      row.antonyms ?? [],
-  register:      row.register ?? "",
-  memoryHook:    row.memory_hook ?? "",
-  audioUrl:      row.audio_url ?? "",
-  etymology:     row.etymology ?? "",
-  collocations:  row.collocations ?? [],
-  usageNote:     row.usage_note ?? "",
-  commonMistake: row.common_mistake ?? "",
-  cefrLevel:     row.cefr_level ?? "",
-  quizQuestions: row.quiz_questions ?? [],
-  status:        row.status ?? "new",
-  nextReview:    row.next_review ?? new Date().toISOString(),
-  interval:      row.interval_days ?? 0,
-  easeFactor:    parseFloat(row.ease_factor) || 2.5,
-  reviewCount:   row.review_count ?? 0,
-  createdAt:     row.created_at ?? new Date().toISOString(),
+  id:               row.id,
+  word:             row.word ?? "",
+  phonetic:         row.phonetic ?? "",
+  ipa:              row.ipa ?? "",
+  partOfSpeech:     row.part_of_speech ?? "",
+  definition:       row.definition ?? "",
+  simpleDefinition: row.simple_definition ?? "",
+  grammarNote:      row.grammar_note ?? "",
+  wordFamily:       row.word_family ?? [],
+  forms:            row.forms ?? [],
+  examples:         row.examples ?? [],
+  synonyms:         row.synonyms ?? [],
+  antonyms:         row.antonyms ?? [],
+  register:         row.register ?? "",
+  memoryHook:       row.memory_hook ?? "",
+  audioUrl:         row.audio_url ?? "",
+  etymology:        row.etymology ?? "",
+  collocations:     row.collocations ?? [],
+  usageNote:        row.usage_note ?? "",
+  commonMistake:    row.common_mistake ?? "",
+  cefrLevel:        row.cefr_level ?? "",
+  quizQuestions:    row.quiz_questions ?? [],
+  status:           row.status ?? "new",
+  nextReview:       row.next_review ?? new Date().toISOString(),
+  interval:         row.interval_days ?? 0,
+  easeFactor:       parseFloat(row.ease_factor) || 2.5,
+  reviewCount:      row.review_count ?? 0,
+  createdAt:        row.created_at ?? new Date().toISOString(),
 });
 
 const mapWordToDb = (word) => ({
-  word:           word.word,
-  phonetic:       word.phonetic || null,
-  ipa:            word.ipa || null,
-  part_of_speech: word.partOfSpeech || null,
-  definition:     word.definition || null,
-  forms:          word.forms || [],
-  examples:       word.examples || [],
-  synonyms:       word.synonyms || [],
-  antonyms:       word.antonyms || [],
-  register:       word.register || null,
-  memory_hook:    word.memoryHook || null,
-  audio_url:      word.audioUrl || null,
-  etymology:      word.etymology || null,
-  collocations:   word.collocations || [],
-  usage_note:     word.usageNote || null,
-  common_mistake: word.commonMistake || null,
-  cefr_level:     word.cefrLevel || null,
-  status:         word.status || "new",
-  next_review:    word.nextReview || new Date().toISOString(),
-  interval_days:  word.interval || 0,
-  ease_factor:    word.easeFactor || 2.5,
-  review_count:   word.reviewCount || 0,
+  word:              word.word,
+  phonetic:          word.phonetic || null,
+  ipa:               word.ipa || null,
+  part_of_speech:    word.partOfSpeech || null,
+  definition:        word.definition || null,
+  simple_definition: word.simpleDefinition || null,
+  grammar_note:      word.grammarNote || null,
+  word_family:       word.wordFamily || [],
+  forms:             word.forms || [],
+  examples:          word.examples || [],
+  synonyms:          word.synonyms || [],
+  antonyms:          word.antonyms || [],
+  register:          word.register || null,
+  memory_hook:       word.memoryHook || null,
+  audio_url:         word.audioUrl || null,
+  etymology:         word.etymology || null,
+  collocations:      word.collocations || [],
+  usage_note:        word.usageNote || null,
+  common_mistake:    word.commonMistake || null,
+  cefr_level:        word.cefrLevel || null,
+  status:            word.status || "new",
+  next_review:       word.nextReview || new Date().toISOString(),
+  interval_days:     word.interval || 0,
+  ease_factor:       word.easeFactor || 2.5,
+  review_count:      word.reviewCount || 0,
 });
+
+// ─── Duplicate / synonym detector ────────────────────────────────────────────
+// Returns {type:"exact"|"related", matches:[wordObj]} or null
+function findLibraryDuplicates(preview, userWords, userWordIds) {
+  const newWordLower = preview.word.toLowerCase();
+
+  // 1. Exact match
+  if (userWordIds.has(newWordLower)) {
+    const match = userWords.find(w => w.word.toLowerCase() === newWordLower);
+    return { type: "exact", matches: [match].filter(Boolean) };
+  }
+
+  // 2. The new word's synonyms are already in the library
+  const previewSynSet = new Set(
+    (preview.synonyms || []).map(s => s.toLowerCase().split(/[\s(,]/)[0].trim()).filter(Boolean)
+  );
+  const synMatches = userWords.filter(w => previewSynSet.has(w.word.toLowerCase()));
+
+  // 3. Library words whose synonym lists contain the new word
+  const reverseMatches = userWords.filter(w =>
+    !synMatches.find(m => m.word === w.word) &&
+    (w.synonyms || []).some(s => s.toLowerCase().split(/[\s(,]/)[0].trim() === newWordLower)
+  );
+
+  const all = [...synMatches, ...reverseMatches];
+  if (all.length > 0) return { type: "related", matches: all.slice(0, 3) };
+
+  return null;
+}
 
 // ─── Shared UI primitives ─────────────────────────────────────────────────────
 function Badge({ status }) {
@@ -1004,11 +1039,45 @@ function WordDetailScreen({ word: initialWord, onBack, onAdd, onToast, userWordI
           )}
         </Card>
 
+        {/* Simple Definition */}
+        {word.simpleDefinition && (
+          <Card style={{ background: "rgba(74,222,128,0.04)", border: `1px solid rgba(74,222,128,0.2)` }}>
+            <SectionLabel>In Plain English</SectionLabel>
+            <p style={{ margin: 0, fontSize: 15, color: T.text, lineHeight: 1.75, fontWeight: 500 }}>{word.simpleDefinition}</p>
+          </Card>
+        )}
+
         {/* Definition */}
         <Card>
-          <SectionLabel>Definition</SectionLabel>
+          <SectionLabel>Full Definition</SectionLabel>
           <p style={{ margin: 0, fontSize: 14, color: T.text, lineHeight: 1.7 }}>{word.definition}</p>
         </Card>
+
+        {/* Grammar Note */}
+        {word.grammarNote && (
+          <Card style={{ background: "rgba(251,146,60,0.04)", border: `1px solid rgba(251,146,60,0.2)` }}>
+            <SectionLabel>Grammar</SectionLabel>
+            <p style={{ margin: 0, fontSize: 13, color: T.orange, lineHeight: 1.65 }}>{word.grammarNote}</p>
+          </Card>
+        )}
+
+        {/* Word Family */}
+        {word.wordFamily?.length > 0 && (
+          <Card>
+            <SectionLabel>Word Family</SectionLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {word.wordFamily.map((entry, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <Pill label={entry.pos} color={T.purple} bg={T.purpleBg} />
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{entry.word}</span>
+                    {entry.note && <span style={{ fontSize: 12, color: T.textDim, marginLeft: 6 }}>— {entry.note}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         {/* Word Forms */}
         {word.forms?.length > 0 && (
@@ -1182,7 +1251,7 @@ function WordDetailScreen({ word: initialWord, onBack, onAdd, onToast, userWordI
 }
 
 // ─── Word Preview Card (Add screen) ──────────────────────────────────────────
-function WordPreviewCard({ preview, onSave, saved, saving }) {
+function WordPreviewCard({ preview, onSave, saved, saving, duplicate }) {
   const [audioState, setAudioState] = useState("idle");
 
   const playAudio = async () => {
@@ -1234,11 +1303,45 @@ function WordPreviewCard({ preview, onSave, saved, saving }) {
         )}
       </Card>
 
+      {/* Simple Definition */}
+      {preview.simpleDefinition && (
+        <Card style={{ background: "rgba(74,222,128,0.04)", border: `1px solid rgba(74,222,128,0.2)` }}>
+          <SectionLabel>In Plain English</SectionLabel>
+          <p style={{ margin: 0, fontSize: 15, color: T.text, lineHeight: 1.75, fontWeight: 500 }}>{preview.simpleDefinition}</p>
+        </Card>
+      )}
+
       {/* Definition */}
       <Card>
-        <SectionLabel>Definition</SectionLabel>
+        <SectionLabel>Full Definition</SectionLabel>
         <p style={{ margin: 0, fontSize: 14, color: T.text, lineHeight: 1.7 }}>{preview.definition}</p>
       </Card>
+
+      {/* Grammar Note */}
+      {preview.grammarNote && (
+        <Card style={{ background: "rgba(251,146,60,0.04)", border: `1px solid rgba(251,146,60,0.2)` }}>
+          <SectionLabel>Grammar</SectionLabel>
+          <p style={{ margin: 0, fontSize: 13, color: T.orange, lineHeight: 1.65 }}>{preview.grammarNote}</p>
+        </Card>
+      )}
+
+      {/* Word Family */}
+      {preview.wordFamily?.length > 0 && (
+        <Card>
+          <SectionLabel>Word Family</SectionLabel>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {preview.wordFamily.map((entry, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <Pill label={entry.pos} color={T.purple} bg={T.purpleBg} />
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{entry.word}</span>
+                  {entry.note && <span style={{ fontSize: 12, color: T.textDim, marginLeft: 6 }}>— {entry.note}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Examples */}
       {preview.examples?.length > 0 && (
@@ -1309,6 +1412,38 @@ function WordPreviewCard({ preview, onSave, saved, saving }) {
         </Card>
       )}
 
+      {/* Duplicate / related-word warning */}
+      {duplicate && (
+        <Card style={{
+          background: duplicate.type === "exact" ? "rgba(251,146,60,0.07)" : "rgba(96,165,250,0.06)",
+          border: `1px solid ${duplicate.type === "exact" ? "rgba(251,146,60,0.35)" : "rgba(96,165,250,0.3)"}`,
+          marginBottom: 4,
+        }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+            <span style={{ fontSize: 18, flexShrink: 0 }}>{duplicate.type === "exact" ? "⚠️" : "💡"}</span>
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 700, color: duplicate.type === "exact" ? T.orange : T.blue }}>
+                {duplicate.type === "exact"
+                  ? "Already in your library"
+                  : "Related word already in your library"}
+              </p>
+              <p style={{ margin: "0 0 8px", fontSize: 12, color: T.textDim, lineHeight: 1.5 }}>
+                {duplicate.type === "exact"
+                  ? `You already have "${preview.word}" saved. Adding it again will reset its progress.`
+                  : `You already know a related word — you might not need to add this one.`}
+              </p>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {duplicate.matches.map(m => (
+                  <span key={m.word} style={{ background: duplicate.type === "exact" ? "rgba(251,146,60,0.15)" : "rgba(96,165,250,0.15)", color: duplicate.type === "exact" ? T.orange : T.blue, fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 20 }}>
+                    {m.word} · {m.status}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <button onClick={onSave} disabled={saving || saved}
         style={{ width: "100%", background: saved ? T.green : T.text, color: saved ? "#fff" : T.bg, border: "none", borderRadius: T.radius, padding: "14px", fontSize: 15, fontWeight: 700, cursor: saving || saved ? "default" : "pointer", opacity: saving ? 0.7 : 1, marginTop: 4 }}>
         {saved ? "Saved ✓" : saving ? "Saving…" : "Save to Library"}
@@ -1318,11 +1453,12 @@ function WordPreviewCard({ preview, onSave, saved, saving }) {
 }
 
 // ─── Add Word Screen ──────────────────────────────────────────────────────────
-function AddWordScreen({ onAdd, onToast }) {
+function AddWordScreen({ onAdd, onToast, words: userWords = [], userWordIds = new Set() }) {
   const [mode, setMode]           = useState("quick");
   const [input, setInput]         = useState("");
   const [loading, setLoading]     = useState(false);
   const [preview, setPreview]     = useState(null);
+  const [duplicate, setDuplicate] = useState(null); // {type, matches}
   const [saved, setSaved]         = useState(false);
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState(null);
@@ -1341,7 +1477,7 @@ function AddWordScreen({ onAdd, onToast }) {
   const enrichWord = async (word, sentence = null) => {
     // Cancel any pending auto-clear from a previous save so it can't wipe the new preview
     if (resetTimerRef.current) { clearTimeout(resetTimerRef.current); resetTimerRef.current = null; }
-    setLoading(true); setError(null); setPreview(null); setSaved(false);
+    setLoading(true); setError(null); setPreview(null); setDuplicate(null); setSaved(false);
     try {
       const res = await fetch(`${API}/api/enrich`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -1352,7 +1488,9 @@ function AddWordScreen({ onAdd, onToast }) {
         throw new Error(e.error || e.detail || `Could not enrich word (${res.status})`);
       }
       const data = await res.json();
-      setPreview({ ...data, status: "new", nextReview: new Date().toISOString(), interval: 0, easeFactor: 2.5, reviewCount: 0 });
+      const enriched = { ...data, status: "new", nextReview: new Date().toISOString(), interval: 0, easeFactor: 2.5, reviewCount: 0 };
+      setPreview(enriched);
+      setDuplicate(findLibraryDuplicates(enriched, userWords, userWordIds));
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   };
@@ -1575,7 +1713,7 @@ function AddWordScreen({ onAdd, onToast }) {
       )}
 
       {preview && !loading && mode !== "batch" && (
-        <WordPreviewCard preview={preview} onSave={handleSave} saved={saved} saving={saving} />
+        <WordPreviewCard preview={preview} onSave={handleSave} saved={saved} saving={saving} duplicate={duplicate} />
       )}
 
       {!loading && !preview && !error && (mode === "quick" || mode === "sentence") && (
@@ -2496,7 +2634,7 @@ export default function VocabApp() {
           }}
         />
       )}
-      {screen === "add" && <AddWordScreen onAdd={handleAddWord} onToast={toast} />}
+      {screen === "add" && <AddWordScreen onAdd={handleAddWord} onToast={toast} words={words} userWordIds={userWordIds} />}
       {screen === "stats" && <StatsScreen words={words} streak={streak} />}
       {screen === "review" && (
         <ReviewScreen words={words} onUpdateWord={handleUpdateWord} onComplete={() => { navigateTo("home"); }} onGenerateQuiz={generateQuizQuestions} />
