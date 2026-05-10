@@ -4,8 +4,8 @@
  * Env var: GEMINI_API_KEY
  */
 
-const MODEL      = "gemini-1.5-flash-latest";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+const MODEL      = "gemini-1.5-flash";
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/${MODEL}:generateContent`;
 
 /**
  * Call the Gemini API.
