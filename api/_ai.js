@@ -1,48 +1,43 @@
 /**
- * Shared NVIDIA NIM helper — used by enrich.js, extract-word.js, extract-words.js
- * Model: google/gemma-3-27b-it  (free tier via NVIDIA NIM)
- * Env var: NVIDIA_API_KEY
+ * Shared Gemini helper — used by enrich.js, extract-word.js, extract-words.js
+ * Model: gemini-2.0-flash (via Google AI Studio)
+ * Env var: GEMINI_API_KEY
  */
 
-const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
-const MODEL      = "google/gemma-3-27b-it";
+const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 /**
- * Call the NVIDIA NIM API.
+ * Call the Gemini API.
  * Returns the raw text content, or null on any failure.
  */
 export async function callAI(systemPrompt, userPrompt, {
   maxTokens   = 1024,
   temperature = 0.20,
-  topP        = 0.70,
 } = {}) {
-  const apiKey = process.env.NVIDIA_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
 
   try {
-    const res = await fetch(NVIDIA_URL, {
+    const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user",   content: userPrompt   },
+        system_instruction: {
+          parts: [{ text: systemPrompt }],
+        },
+        contents: [
+          { role: "user", parts: [{ text: userPrompt }] },
         ],
-        max_tokens:  maxTokens,
-        temperature,
-        top_p: topP,
-        stream: false,
+        generationConfig: {
+          temperature,
+          maxOutputTokens: maxTokens,
+        },
       }),
     });
 
     if (!res.ok) return null;
     const data = await res.json();
-    const text = data.choices?.[0]?.message?.content;
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
     return text ? text.trim() : null;
   } catch {
     return null;
@@ -66,10 +61,7 @@ export async function callAIJson(systemPrompt, userPrompt, options = {}) {
  */
 export function extractJson(text) {
   try {
-    // Strip ```json ... ``` or ``` ... ``` fences
     let clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
-
-    // If still not parseable, find the first JSON object or array
     if (!/^[\[{]/.test(clean)) {
       const m = clean.match(/([\[{][\s\S]*[\]}])/);
       if (m) clean = m[1];

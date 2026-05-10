@@ -8,7 +8,7 @@
  *   3. NVIDIA NIM / Gemma   → fills every missing field + adds learning metadata
  *   4. Write-through cache  → saves result to shared library for future users
  *
- * Env vars: NVIDIA_API_KEY, SUPABASE_URL (or VITE_SUPABASE_URL), SUPABASE_SERVICE_KEY
+ * Env vars: GEMINI_API_KEY, SUPABASE_URL (or VITE_SUPABASE_URL), SUPABASE_SERVICE_KEY
  */
 
 import { callAIJson } from "./_ai.js";
@@ -333,7 +333,7 @@ export default async function handler(req, res) {
 
     const aiResult = await callAIJson(FULL_SYSTEM_PROMPT, userPrompt, { maxTokens: 2048, temperature: 0.2 });
     if (!aiResult) {
-      return res.status(503).json({ error: "Could not enrich word. Check NVIDIA_API_KEY in Vercel env vars." });
+      return res.status(503).json({ error: "Could not enrich word. Check GEMINI_API_KEY in Vercel env vars." });
     }
 
     // Try to get audio from Free Dictionary using AI-returned word form
