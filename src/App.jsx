@@ -51,23 +51,40 @@ const Icon = ({ name, size = 20, color = T.textMuted }) => (
   </svg>
 );
 
-// ─── SRS Algorithm (SM-2) ─────────────────────────────────────────────────────
+// ─── SRS Algorithm (SM-2 + correct-streak mastery) ───────────────────────────
+// reviewCount = consecutive correct answers (streak). Resets to 0 on wrong.
+// Status milestones: 1 correct → learning, 3 → reviewing, 5 → mastered.
+// Interval (SM-2) controls *when* you see it next; streak controls *status*.
 function scheduleWord(word, rating) {
   let { interval, easeFactor, reviewCount } = word;
-  reviewCount += 1;
-  if (rating === 1) { interval = 0; easeFactor = Math.max(1.3, easeFactor - 0.2); }
-  else if (rating === 2) { interval = Math.max(1, interval); easeFactor = Math.max(1.3, easeFactor - 0.15); }
-  else if (rating === 3) { interval = reviewCount === 1 ? 1 : reviewCount === 2 ? 3 : Math.round(interval * easeFactor); }
-  else { interval = reviewCount === 1 ? 1 : Math.round(interval * easeFactor * 1.3); easeFactor = Math.min(3.0, easeFactor + 0.1); }
+
+  if (rating === 1) {
+    // Wrong: reset streak and interval — you'll see it again tomorrow
+    reviewCount = 0;
+    interval = 0;
+    easeFactor = Math.max(1.3, easeFactor - 0.2);
+  } else {
+    // Correct (rating 2 = hard, 3 = good, 4 = easy)
+    reviewCount += 1;
+    if (rating === 2)      { interval = Math.max(1, interval); easeFactor = Math.max(1.3, easeFactor - 0.1); }
+    else if (rating === 3) { interval = reviewCount === 1 ? 1 : reviewCount === 2 ? 3 : Math.round(interval * easeFactor); }
+    else                   { interval = reviewCount === 1 ? 1 : Math.round(interval * easeFactor * 1.3); easeFactor = Math.min(3.0, easeFactor + 0.1); }
+  }
+
   const nextReview = new Date(Date.now() + interval * 86400000).toISOString();
-  let status = "learning";
-  if (interval >= 21) status = "mastered";
-  else if (interval >= 3) status = "reviewing";
+
+  // Status is driven by correct streak, not raw interval
+  let status = "new";
+  if (reviewCount >= 5)      status = "mastered";
+  else if (reviewCount >= 3) status = "reviewing";
+  else if (reviewCount >= 1) status = "learning";
+
   return { ...word, interval, easeFactor, reviewCount, nextReview, status };
 }
 
+// Only non-mastered words count as "due"
 function getDueWords(words) {
-  return words.filter(w => new Date(w.nextReview) <= new Date());
+  return words.filter(w => w.status !== "mastered" && new Date(w.nextReview) <= new Date());
 }
 
 // ─── DB Mappers ───────────────────────────────────────────────────────────────
@@ -1875,17 +1892,40 @@ function ReviewScreen({ words, onUpdateWord, onComplete, onGenerateQuiz }) {
     return q;
   }, []);
 
-  // Build a round of ROUND_SIZE questions from the word pool
+  // Build a round of ROUND_SIZE questions with smart prioritisation:
+  // 1. New words (never reviewed) — highest priority
+  // 2. Due non-mastered words (learning / reviewing, past their next-review date)
+  // 3. Non-due non-mastered words (seen but not yet due — fill remaining slots)
+  // 4. Mastered words — at most 1-2 per session as a light refresher
   const buildRound = useCallback(() => {
-    const due = words.filter(w => !w.nextReview || new Date(w.nextReview) <= new Date());
-    const pool = due.length > 0 ? due : words;
-    const shuffled = [...pool].sort(() => Math.random() - 0.5);
-    const picked = [];
-    for (let i = 0; i < ROUND_SIZE && shuffled.length > 0; i++) {
-      picked.push(shuffled[i % shuffled.length]);
+    const now = new Date();
+    const newWords       = words.filter(w => w.status === "new");
+    const dueActive      = words.filter(w => w.status !== "new" && w.status !== "mastered" && new Date(w.nextReview) <= now);
+    const notDueActive   = words.filter(w => w.status !== "new" && w.status !== "mastered" && new Date(w.nextReview) > now);
+    const mastered       = words.filter(w => w.status === "mastered");
+
+    const shuffle = arr => [...arr].sort(() => Math.random() - 0.5);
+
+    // Fill pool in priority order
+    let pool = [
+      ...shuffle(newWords),
+      ...shuffle(dueActive),
+      ...shuffle(notDueActive),
+    ].slice(0, ROUND_SIZE);
+
+    // Pad with at most 2 mastered words if the round is short
+    if (pool.length < ROUND_SIZE && mastered.length > 0) {
+      pool = [...pool, ...shuffle(mastered).slice(0, Math.min(2, ROUND_SIZE - pool.length))];
     }
+
+    // If still short (tiny library), loop the best available words
+    if (pool.length < ROUND_SIZE && pool.length > 0) {
+      const ext = shuffle([...newWords, ...dueActive, ...notDueActive]);
+      while (pool.length < ROUND_SIZE) pool.push(ext[pool.length % ext.length]);
+    }
+
     seenQIdx.current = new Map();
-    return picked.map((word, idx) => {
+    return pool.map((word, idx) => {
       const freshWord = words.find(w => w.id === word.id) || word;
       const isMC = quizMode === "multichoice" || (quizMode === "mixed" && idx % 2 === 1);
       const mode = quizMode === "flashcard" ? "flashcard" : isMC ? "multichoice" : "flashcard";
@@ -1912,12 +1952,18 @@ function ReviewScreen({ words, onUpdateWord, onComplete, onGenerateQuiz }) {
     setRoundKey(k => k + 1);
   }, [words, buildRound]);
 
-  // Handle answer �� record result, update SRS, advance
-  const handleAnswer = (wasCorrect, userAnswer) => {
+  // Handle answer → record result, update SRS, advance
+  // Flashcard "Got it" uses rating 4 (confident) → wider interval growth
+  // Multiple choice correct uses rating 3 (good) → normal interval growth
+  // Wrong always uses rating 1 → streak resets to 0
+  const handleAnswer = (wasCorrect, userAnswer, rating = null) => {
     if (!currentQ || answeredRef.current) return;
     answeredRef.current = true;
-    const { word } = currentQ;
-    const updated = scheduleWord(word, wasCorrect ? 3 : 1);
+    const { word, mode } = currentQ;
+    const effectiveRating = wasCorrect
+      ? (rating ?? (mode === "flashcard" ? 4 : 3))
+      : 1;
+    const updated = scheduleWord(word, effectiveRating);
     onUpdateWord(updated);
 
     setResults(prev => [...prev, {
