@@ -1,10 +1,11 @@
 /**
  * Shared Gemini helper — used by enrich.js, extract-word.js, extract-words.js
- * Model: gemini-2.0-flash (via Google AI Studio)
+ * Model: gemini-1.5-flash (Google AI Studio)
  * Env var: GEMINI_API_KEY
  */
 
-const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+const MODEL      = "gemini-1.5-flash";
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
 /**
  * Call the Gemini API.
@@ -17,16 +18,18 @@ export async function callAI(systemPrompt, userPrompt, {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
 
+  // Merge system + user into a single user turn — most compatible format
+  const fullPrompt = systemPrompt
+    ? `${systemPrompt}\n\n---\n\n${userPrompt}`
+    : userPrompt;
+
   try {
     const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        system_instruction: {
-          parts: [{ text: systemPrompt }],
-        },
         contents: [
-          { role: "user", parts: [{ text: userPrompt }] },
+          { role: "user", parts: [{ text: fullPrompt }] },
         ],
         generationConfig: {
           temperature,
@@ -35,11 +38,17 @@ export async function callAI(systemPrompt, userPrompt, {
       }),
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error("Gemini API error:", res.status, JSON.stringify(err));
+      return null;
+    }
+
     const data = await res.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
     return text ? text.trim() : null;
-  } catch {
+  } catch (e) {
+    console.error("Gemini fetch error:", e.message);
     return null;
   }
 }
