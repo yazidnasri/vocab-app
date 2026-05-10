@@ -36,8 +36,8 @@ async function readCache(word) {
     );
     if (!res.ok) return null;
     const [row] = await res.json() ?? [];
-    // Only use cache if it has full enrichment data — skip partially-seeded rows
-    if (!row?.definition || !row?.cefr_level) return null;
+    // Only use cache if it has full enrichment data including the new v2 fields
+    if (!row?.definition || !row?.cefr_level || !row?.simple_definition) return null;
     return mapRowToResult(row);
   } catch { return null; }
 }
