@@ -185,7 +185,7 @@ function SkeletonCard() {
 // ─── Toast system ─────────────────────────────────────────────────────────────
 function ToastContainer({ toasts }) {
   return (
-    <div style={{ position: "fixed", top: "calc(env(safe-area-inset-top, 0px) + 16px)", left: "50%", transform: "translateX(-50%)", width: "calc(100% - 40px)", maxWidth: 350, zIndex: 9999, display: "flex", flexDirection: "column", gap: 8, pointerEvents: "none" }}>
+    <div style={{ position: "fixed", bottom: "calc(env(safe-area-inset-bottom, 0px) + 82px)", left: "50%", transform: "translateX(-50%)", width: "calc(100% - 40px)", maxWidth: 350, zIndex: 9999, display: "flex", flexDirection: "column", gap: 8, pointerEvents: "none" }}>
       {toasts.map(t => (
         <div key={t.id} className="toast" style={{
           background: t.type === "error" ? T.redBg : t.type === "warning" ? T.orangeBg : T.greenBg,
